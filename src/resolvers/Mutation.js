@@ -1,3 +1,6 @@
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
 const mutations = {
     async createItem(parent, args, ctx, info) {
         // TODO: check if they are logged in
@@ -30,6 +33,28 @@ const mutations = {
         // TODO
         // 3. delete it!
         return ctx.db.mutation.deleteItem({where}, info);
+    },
+    async signup(parent, args, ctx, info) {
+        args.email = args.email.toLowerCase();
+        // hash the password || bcrypt is async thats why we need await
+        const password = await bcrypt.hash(args.password, 10);
+        // create the user in the db
+        const user = await ctx.db.mutation.createUser({
+            data: {
+                ...args, // same as name: args.name, email: args.email, password: args.password
+                password,
+                permissions: { set: ['USER'] }
+            }
+        }, info);
+        // create jwt token for the user
+        const token = jwt.sign({userId: user.id}, process.env.APP_SECRET)
+        // set the jwt as a cookie on the response so that every time they click on another page, the token comes on the ride
+        ctx.response.cookie('token', token, {
+            httpOnly: true,
+            maxAge: 1000 * 60 * 60 * 24 * 365 // 1 year cookie
+        });
+        // finally return the user to the browser
+        return user;
     }
 };
 
