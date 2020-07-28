@@ -76,6 +76,10 @@ const mutations = {
         });
         // 5. return the user
         return user;
+    },
+    signout(parent, args, ctx, info) {
+        ctx.response.clearCookie('token'); // we can use clearCookie here because in index.js the cookieParser is used as middleware
+        return {message: 'Goodbye!'};
     }
 };
 
