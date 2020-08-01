@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const {randomBytes} = require('crypto');
 const {promisify} = require('util'); // this takes callback based funcs and makes them promise based
 const {transport, makeANiceEmail} = require('../mail');
+const {hasPermission} = require("../utils");
+
 
 const mutations = {
     async createItem(parent, args, ctx, info) {
@@ -40,9 +42,11 @@ const mutations = {
     async deleteItem(parent, args, ctx, info) {
         const where = {id: args.id};
         // 1.find the item
-        const item = await ctx.db.query.item({where}, `{id, title}`)
+        const item = await ctx.db.query.item({where}, `{id, title, user { id }}`);
         // 2. check if they own that item or have the permissions
-        // TODO
+        const ownsItem = item.user.id === ctx.request.userId;
+        const hasPermissions = ctx.request.user.permissions.some(permission=>['ADMIN', 'ITEMDELETE'].includes(permission)); // this checks if the user has either one(at least one) of the ADMIN or ITEMDELETE
+        if (!ownsItem && !hasPermissions) throw new Error('You don\'t have the permission for this action!');
         // 3. delete it!
         return ctx.db.mutation.deleteItem({where}, info);
     },
@@ -153,6 +157,28 @@ const mutations = {
         });
         // 8. return the new user
         return updatedUser
+    },
+
+    async updatePermissions(parent, args, ctx, info) {
+        // 1. check if they are logged in
+        if (!ctx.request.userId) throw new Error("Must be logged in!")
+        // 2. query the current user
+        const currentUser = await ctx.db.query.user({
+            where: {id: ctx.request.userId}
+        }, info)
+        // 3. check if they have permissions to do this
+        hasPermission(currentUser, ['ADMIN', 'PERMISSIONUPDATE']);
+        // 4. update the permissions
+        return ctx.db.mutation.updateUser({
+            data: {
+                permissions: {
+                    set: args.permissions
+                }
+            },
+            where: {
+                id: args.userId // not using our own userId because we might be updating someone else's permissions
+            }
+        }, info);
     }
 };
 
