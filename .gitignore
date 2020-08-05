@@ -1,4 +1,3 @@
 variables.env
 node_modules/
 package-lock.json
-src/generated/prisma.graphql
