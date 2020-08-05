@@ -45,7 +45,7 @@ const mutations = {
         const item = await ctx.db.query.item({where}, `{id, title, user { id }}`);
         // 2. check if they own that item or have the permissions
         const ownsItem = item.user.id === ctx.request.userId;
-        const hasPermissions = ctx.request.user.permissions.some(permission=>['ADMIN', 'ITEMDELETE'].includes(permission)); // this checks if the user has either one(at least one) of the ADMIN or ITEMDELETE
+        const hasPermissions = ctx.request.user.permissions.some(permission => ['ADMIN', 'ITEMDELETE'].includes(permission)); // this checks if the user has either one(at least one) of the ADMIN or ITEMDELETE
         if (!ownsItem && !hasPermissions) throw new Error('You don\'t have the permission for this action!');
         // 3. delete it!
         return ctx.db.mutation.deleteItem({where}, info);
@@ -59,7 +59,7 @@ const mutations = {
             data: {
                 ...args, // same as name: args.name, email: args.email, password: args.password
                 password,
-                permissions: { set: ['USER'] }
+                permissions: {set: ['USER']}
             }
         }, info);
         // create jwt token for the user
@@ -77,7 +77,8 @@ const mutations = {
         const user = await ctx.db.query.user({where: {email}});
         if (!user) {
             throw new Error(`No such user found for email: ${email}`) // this error is thrown to the frontend and is caught by Query/Mutation components
-        };
+        }
+        ;
         // 2. check if their password is correct
         const valid = await bcrypt.compare(password, user.password);
         if (!valid) {
@@ -127,7 +128,7 @@ const mutations = {
     },
     async resetPassword(parent, args, ctx, info) {
         // 1. check if the passwords match
-        if(args.password !== args.confirmPassword) {
+        if (args.password !== args.confirmPassword) {
             throw new Error('Passwords do not match!')
         }
         // 2. check if its a legit resetToken
@@ -179,6 +180,49 @@ const mutations = {
                 id: args.userId // not using our own userId because we might be updating someone else's permissions
             }
         }, info);
+    },
+    async addToCart(parent, args, ctx, info) {
+        // 1. make sure user is signed in
+        const userId = ctx.request.userId;
+        if (!userId) throw new Error("You must be signed in!");
+        // 2. query the user's current cart
+        const [existingCartItem] = await ctx.db.query.cartItems({
+            where: {
+                user: {id: userId},
+                item: {id: args.id}
+            }
+        }, info);
+        // 3. check if that item is already in their cart and increment by 1 if so
+        if (existingCartItem) {
+            console.log("This item is already in their cart");
+            return ctx.db.mutation.updateCartItem({
+                where: {id: existingCartItem.id},
+                data: {quantity: existingCartItem.quantity + 1}
+            }, info)
+        }
+        // 4. if its not, create a fresh cartItem for that user
+        return ctx.db.mutation.createCartItem({
+            data: {
+                user: {
+                    connect: {id: userId}
+                },
+                item: {
+                    connect: {id: args.id} // prisma way of relationships
+                }
+            }
+        }, info)
+    },
+    async removeFromCart(parent, args, ctx, info) {
+        // 1. find the cart item
+        const cartItem = await ctx.db.query.cartItem({
+            where: {id: args.id}
+        }, `{id, user {id}}`);
+        // 1.5 make sure an item is found
+        if (!cartItem) throw new Error("No cart item found!")
+        // 2. make sure they own the cart item
+        if (cartItem.user.id !== ctx.request.userId) throw new Error("You are not the owner of this cart!")
+        // 3. delete that cart item
+        return ctx.db.mutation.deleteCartItem({where: {id: args.id}}, info)
     }
 };
 
